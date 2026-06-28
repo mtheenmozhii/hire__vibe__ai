@@ -1,0 +1,10 @@
+{
+  "name": "HireVibe AI",
+  "description": "A professional AI-powered interview preparation platform with resume analysis, dynamic questioning, and performance analytics.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

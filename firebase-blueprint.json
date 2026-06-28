@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "userProfile": {
+      "title": "User Profile",
+      "description": "Stores user basic information and career goals.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email"]
+    },
+    "resumeData": {
+      "title": "Resume Data",
+      "description": "Extracted and processed resume data.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "fileName": { "type": "string" },
+        "extractedText": { "type": "string" },
+        "analysis": {
+          "type": "object",
+          "properties": {
+            "skills": { "type": "array", "items": { "type": "string" } },
+            "experience": { "type": "array" },
+            "education": { "type": "array" },
+            "projects": { "type": "array" }
+          }
+        },
+        "uploadedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "interviewSession": {
+      "title": "Interview Session",
+      "description": "Details of an interview session and its results.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "resumeId": { "type": "string" },
+        "questions": { "type": "array" },
+        "answers": { "type": "array" },
+        "results": {
+          "type": "object",
+          "properties": {
+            "overallScore": { "type": "number" },
+            "technicalScore": { "type": "number" },
+            "communicationScore": { "type": "number" },
+            "confidenceScore": { "type": "number" },
+            "problemSolvingScore": { "type": "number" },
+            "strengths": { "type": "array", "items": { "type": "string" } },
+            "weaknesses": { "type": "array", "items": { "type": "string" } },
+            "feedback": { "type": "string" }
+          }
+        },
+        "status": { "type": "string", "enum": ["in-progress", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "aptitudeAttempt": {
+      "title": "Aptitude Attempt",
+      "description": "Details of an aptitude test practice attempt.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "category": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "correctAnswers": { "type": "number" },
+        "incorrectAnswers": { "type": "number" },
+        "durationSeconds": { "type": "number" },
+        "questions": { "type": "array" },
+        "userAnswers": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "userProfile",
+      "description": "User profiles"
+    },
+    "resumes/{resumeId}": {
+      "schema": "resumeData",
+      "description": "Uploaded resume information"
+    },
+    "interviews/{interviewId}": {
+      "schema": "interviewSession",
+      "description": "Interview session records"
+    },
+    "aptitudeAttempts/{attemptId}": {
+      "schema": "aptitudeAttempt",
+      "description": "Aptitude practice test records"
+    }
+  }
+}
