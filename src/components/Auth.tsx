@@ -1,21 +1,74 @@
 import React, { useState } from "react";
 import { 
-  signInWithPopup
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
 } from "firebase/auth";
 import { auth, googleProvider } from "../lib/firebase";
 import { motion } from "motion/react";
-import { Mail, Lock, ChevronRight, MessageSquareCode, AlertTriangle } from "lucide-react";
+import { Mail, Lock, ChevronRight, MessageSquareCode, AlertTriangle, User } from "lucide-react";
 import { useAuth } from "../App";
 
 export default function Auth() {
+  const { loginAsGuest } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("Invalid login method. Please use Continue with Google to access your account.");
+    setError("");
+    setLoading(true);
+
+    try {
+      if (isSignUp) {
+        // Register new user
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        if (userCredential.user && name.trim()) {
+          try {
+            await updateProfile(userCredential.user, {
+              displayName: name.trim()
+            });
+          } catch (profileErr) {
+            console.error("Failed to update profile display name:", profileErr);
+          }
+        }
+      } else {
+        // Sign in existing user
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (fbErr: any) {
+      console.error("Firebase auth failed:", fbErr);
+      
+      let errorMsg = fbErr.message || "An authentication error occurred.";
+      const isInvalidCred = fbErr.code === "auth/invalid-credential" || 
+                           fbErr.code === "auth/wrong-password" || 
+                           fbErr.code === "auth/user-not-found" ||
+                           fbErr.message?.includes("auth/invalid-credential") ||
+                           fbErr.message?.includes("auth/wrong-password") ||
+                           fbErr.message?.includes("auth/user-not-found") ||
+                           fbErr.message?.includes("invalid-credential");
+
+      if (isInvalidCred) {
+        errorMsg = "Incorrect email or password. If you do not have an account yet, please click 'Sign Up' below to register, or use the Demo Guest Account to test instantly.";
+      } else if (fbErr.code === "auth/email-already-in-use" || fbErr.message?.includes("auth/email-already-in-use")) {
+        errorMsg = "This email is already registered. Please click 'Sign In' to log in.";
+      } else if (fbErr.code === "auth/weak-password" || fbErr.message?.includes("auth/weak-password")) {
+        errorMsg = "Password must be at least 6 characters long.";
+      } else if (fbErr.code === "auth/invalid-email" || fbErr.message?.includes("auth/invalid-email")) {
+        errorMsg = "Please enter a valid email address.";
+      } else if (fbErr.code === "auth/network-request-failed" || fbErr.message?.includes("auth/network-request-failed")) {
+        errorMsg = "Network error. Please check your internet connection.";
+      }
+      
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -24,10 +77,24 @@ export default function Auth() {
       setLoading(true);
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
-      setError(err.message);
+      console.error("Google sign in failed:", err);
+      let errorMsg = err.message || "Google sign-in failed.";
+      if (err.code === "auth/popup-blocked") {
+        errorMsg = "Google login popup was blocked by your browser. Please allow popups for this site, or use Email/Password sign-in.";
+      } else if (err.code === "auth/popup-closed-by-user") {
+        errorMsg = "Google login popup was closed. Please try again.";
+      } else if (err.code === "auth/cancelled-popup-request") {
+        errorMsg = "Authentication popup was cancelled.";
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGuestLogin = () => {
+    setError("");
+    loginAsGuest("Demo User", "demo.user@example.com");
   };
 
   return (
@@ -92,10 +159,12 @@ export default function Auth() {
           >
             <div className="mb-10 text-center lg:text-left">
               <h3 className="text-3xl font-black font-display mb-3 text-white tracking-tight">
-                Sign In
+                {isSignUp ? "Sign Up" : "Sign In"}
               </h3>
               <p className="text-slate-500 font-medium">
-                Please sign in with Google to access your account.
+                {isSignUp 
+                  ? "Create an account to start your preparation." 
+                  : "Please sign in to access your account."}
               </p>
             </div>
 
@@ -109,27 +178,153 @@ export default function Auth() {
                       </div>
                       <div>
                         <h4 className="text-sm font-black text-white leading-tight mb-1">
-                          Sign-In Methods Disabled (லாகின் அனுமதி இல்லை)
+                          Sign-In Methods Disabled
                         </h4>
                         <p className="text-xs text-red-400/90 font-semibold leading-relaxed">
-                          Firebase Console-ல் Google Sign-In Method இன்னும் Enable செய்யப்படவில்லை.
+                          Firebase Google/Email authentication is not enabled in this project.
                         </p>
                       </div>
                     </div>
                     
                     <div className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] leading-relaxed mb-4 font-mono text-slate-400">
-                      <span className="text-indigo-400 font-bold block mb-1 font-sans">வழிமுறை (Steps):</span>
-                      இதனை சரி செய்ய, கீழே உள்ள பட்டனை கிளிக் செய்து உங்கள் Firebase Console &rarr; Run Authentication &rarr; Sign-in Method பிரிவில் Google முறையை Enable செய்யவும்.
+                      <span className="text-indigo-400 font-bold block mb-1 font-sans">Steps to fix:</span>
+                      Open your Firebase Console, click on Authentication, go to the Sign-in method tab, and enable the Email/Password and Google providers.
                     </div>
 
                     <a
-                      href="https://console.firebase.google.com/project/rosy-lamp-b07pf/authentication/providers"
+                      href="https://console.firebase.google.com/project/hirevibe-ai/authentication/providers"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full py-3 px-4 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-500/15 cursor-pointer uppercase tracking-wider"
                     >
                       Open Firebase Console
                     </a>
+                  </div>
+                );
+              }
+              if (error.includes("auth/unauthorized-domain") || error.includes("unauthorized-domain")) {
+                return (
+                  <div className="mb-8 p-5 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl text-slate-300">
+                    <div className="flex gap-3 items-start mb-3">
+                      <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400 shrink-0">
+                        <AlertTriangle className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-white leading-tight mb-1">
+                          Unauthorized Domain
+                        </h4>
+                        <p className="text-xs text-indigo-400/90 font-semibold leading-relaxed">
+                          This preview domain is not authorized in your Firebase console.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] leading-relaxed mb-4 font-mono text-slate-400 space-y-2">
+                      <div>
+                        <span className="text-indigo-400 font-bold block mb-1 font-sans">Authorized Domain to Add:</span>
+                        <code className="bg-slate-950 px-1.5 py-0.5 rounded text-white border border-slate-800 select-all block break-all">{window.location.hostname}</code>
+                      </div>
+                      <div>
+                        <span className="text-indigo-400 font-bold block mb-1 font-sans">Steps to fix:</span>
+                        Open your Firebase Console Authentication, go to the <strong>Settings</strong> tab, click <strong>Authorized domains</strong>, click <strong>Add domain</strong>, and paste the domain above.
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <a
+                        href="https://console.firebase.google.com/project/hirevibe-ai/authentication/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-500/15 cursor-pointer uppercase tracking-wider"
+                      >
+                        Open Firebase Settings
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleGuestLogin}
+                        className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 rounded-xl font-bold text-xs transition-all cursor-pointer uppercase tracking-wider"
+                      >
+                        Skip & Use Demo Guest Account
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              if (error.includes("auth/invalid-credential") || error.includes("invalid-credential") || error.includes("Incorrect email or password")) {
+                return (
+                  <div className="mb-8 p-5 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl text-slate-300">
+                    <div className="flex gap-3 items-start mb-3">
+                      <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400 shrink-0">
+                        <AlertTriangle className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-white leading-tight mb-1">
+                          Account Not Found / Incorrect Password
+                        </h4>
+                        <p className="text-xs text-indigo-400/90 font-semibold leading-relaxed">
+                          {error}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSignUp(true);
+                          setError("");
+                        }}
+                        className="flex-1 py-2.5 px-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl font-bold text-xs transition-all uppercase tracking-wider cursor-pointer font-sans"
+                      >
+                        Switch to Sign Up
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleGuestLogin}
+                        className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 rounded-xl font-bold text-xs transition-all uppercase tracking-wider cursor-pointer font-sans"
+                      >
+                        Demo Guest Account
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              if (error.includes("auth/email-already-in-use") || error.includes("email-already-in-use") || error.includes("already registered")) {
+                return (
+                  <div className="mb-8 p-5 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl text-slate-300">
+                    <div className="flex gap-3 items-start mb-3">
+                      <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400 shrink-0">
+                        <AlertTriangle className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-white leading-tight mb-1">
+                          Email Already Registered
+                        </h4>
+                        <p className="text-xs text-indigo-400/90 font-semibold leading-relaxed">
+                          {error}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSignUp(false);
+                          setError("");
+                        }}
+                        className="flex-1 py-2.5 px-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl font-bold text-xs transition-all uppercase tracking-wider cursor-pointer font-sans"
+                      >
+                        Switch to Sign In
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleGuestLogin}
+                        className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 rounded-xl font-bold text-xs transition-all uppercase tracking-wider cursor-pointer font-sans"
+                      >
+                        Demo Guest Account
+                      </button>
+                    </div>
                   </div>
                 );
               }
@@ -141,6 +336,23 @@ export default function Auth() {
             })()}
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {isSignUp && (
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Full Name</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-600" />
+                    <input
+                      type="text"
+                      className="w-full pl-12 pr-4 py-4 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-white placeholder:text-slate-700"
+                      placeholder="Alex Mercer"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required={isSignUp}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
                 <div className="relative">
@@ -178,18 +390,31 @@ export default function Auth() {
                 disabled={loading}
                 className="w-full py-5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50"
               >
-                Sign In
+                {loading ? "Please wait..." : (isSignUp ? "Create Account" : "Sign In")}
                 <ChevronRight className="w-5 h-5" />
               </button>
             </form>
 
-            <div className="mt-10 flex items-center gap-4 text-slate-700 text-[10px] font-black uppercase tracking-widest">
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setError("");
+                }}
+                className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
+              </button>
+            </div>
+
+            <div className="mt-8 flex items-center gap-4 text-slate-700 text-[10px] font-black uppercase tracking-widest">
               <div className="flex-1 h-px bg-slate-800" />
               <span>Recommended Method</span>
               <div className="flex-1 h-px bg-slate-800" />
             </div>
 
-            <div className="mt-8 space-y-4">
+            <div className="mt-6 space-y-4">
               <button
                 onClick={handleGoogleSignIn}
                 disabled={loading}
@@ -197,6 +422,16 @@ export default function Auth() {
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
                 {loading ? "Connecting..." : "Continue with Google"}
+              </button>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-slate-900 text-center">
+              <p className="text-xs text-slate-600 mb-3">Testing without a Firebase account?</p>
+              <button
+                onClick={handleGuestLogin}
+                className="text-xs font-black text-indigo-400/80 hover:text-indigo-400 bg-indigo-500/5 hover:bg-indigo-500/10 px-4 py-2.5 rounded-xl border border-indigo-500/10 transition-all hover:scale-[1.01]"
+              >
+                Continue with Demo Guest Account
               </button>
             </div>
           </motion.div>

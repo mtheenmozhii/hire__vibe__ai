@@ -52,8 +52,8 @@ export default function Dashboard() {
           ...doc.data()
         }));
         setInterviews(data);
-      } catch (err) {
-        console.error("Error fetching interviews:", err);
+      } catch (err: any) {
+        console.warn("Firestore offline / error fetching interviews (using local state fallback):", err?.message || err);
       } finally {
         setLoading(false);
       }

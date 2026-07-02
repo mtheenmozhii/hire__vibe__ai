@@ -55,8 +55,8 @@ export default function Analytics() {
         // Filter out in-progress interviews
         const completed = data.filter((item: any) => item.status === "completed" && item.results);
         setInterviews(completed);
-      } catch (err) {
-        console.error("Error fetching completed interviews for analytics:", err);
+      } catch (err: any) {
+        console.warn("Firestore offline / error fetching completed interviews for analytics:", err?.message || err);
       } finally {
         setLoading(false);
       }

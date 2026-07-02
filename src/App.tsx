@@ -69,11 +69,13 @@ export default function App() {
   });
   const [loading, setLoading] = useState(true);
 
-  const loginAsGuest = (name?: string) => {
+  const loginAsGuest = (name?: string, customEmail?: string) => {
+    const emailToUse = customEmail || "guest@example.com";
+    const displayNameToUse = name || emailToUse.split("@")[0] || "Developer Guest";
     const guestUser = {
       uid: "guest-user-" + Math.random().toString(36).substring(2, 9),
-      email: "guest@example.com",
-      displayName: name || "Developer Guest",
+      email: emailToUse,
+      displayName: displayNameToUse.charAt(0).toUpperCase() + displayNameToUse.slice(1),
       photoURL: null,
       isAnonymous: true
     };
@@ -125,8 +127,13 @@ export default function App() {
             await setDoc(docRef, newProfile);
             setProfile(newProfile);
           }
-        } catch (e) {
-          console.error("Error reading profile from Firestore:", e);
+        } catch (e: any) {
+          const isOfflineErr = e?.message?.includes("offline") || e?.message?.includes("network") || e?.code?.includes("offline");
+          if (isOfflineErr) {
+            console.warn("Firestore is running in offline fallback mode for profile fetch:", e.message || e);
+          } else {
+            console.warn("Error reading profile from Firestore (using local fallback):", e.message || e);
+          }
           // Standard memory profile fallback
           setProfile({
             userId: fbUser.uid,

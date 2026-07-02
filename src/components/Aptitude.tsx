@@ -172,8 +172,8 @@ export default function Aptitude() {
           ...doc.data()
         })) as Attempt[];
       }
-    } catch (e) {
-      console.error("Error reading history from Firestore: ", e);
+    } catch (e: any) {
+      console.warn("Firestore offline / error reading history from Firestore: ", e?.message || e);
     }
 
     // Always fetch and merge local attempts for the current user ID
@@ -342,8 +342,8 @@ export default function Aptitude() {
           durationSeconds: totalTimeAllowed - timer,
           createdAt: new Date().toISOString()
         });
-      } catch (err) {
-        console.error("Error saving aptitude score to Firestore: ", err);
+      } catch (err: any) {
+        console.warn("Firestore offline / error saving aptitude score to Firestore: ", err?.message || err);
       }
     }
     

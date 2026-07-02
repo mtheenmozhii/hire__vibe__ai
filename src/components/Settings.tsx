@@ -45,8 +45,8 @@ export default function Settings() {
       });
       setSavedMessage("Settings saved successfully!");
       setTimeout(() => setSavedMessage(""), 3000);
-    } catch (err) {
-      console.error("Error saving settings:", err);
+    } catch (err: any) {
+      console.warn("Firestore offline / error saving settings (settings are local fallback):", err?.message || err);
       setSavedMessage("Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
