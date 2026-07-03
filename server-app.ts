@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
 import multer from "multer";
-import { PDFParse } from "pdf-parse";
+import pdf from "pdf-parse/lib/pdf-parse.js";
 import mammoth from "mammoth";
 import dotenv from "dotenv";
 
@@ -43,10 +43,8 @@ app.post("/api/analyze-resume", upload.single("resume"), async (req: Request, re
     if (req.file.mimetype === "application/pdf") {
       try {
         console.log("Parsing PDF...");
-        const parser = new PDFParse({ data: req.file.buffer });
-        const result = await parser.getText();
+        const result = await pdf(req.file.buffer);
         text = result.text;
-        await parser.destroy();
         console.log("PDF parsed, length:", text.length);
       } catch (pdfError) {
         console.error("PDF parsing error:", pdfError);
