@@ -46,7 +46,15 @@ export default function ResumeUpload() {
   });
 
   const handleProcessResume = async () => {
-    if (!file || !user) return;
+    if (!file || !user) {
+      console.warn("handleProcessResume aborted: file or user is missing", { hasFile: !!file, hasUser: !!user });
+      return;
+    }
+
+    console.log("--- START RESUME UPLOAD FLOW ---");
+    console.log("File Name:", file.name);
+    console.log("File Size:", (file.size / 1024 / 1024).toFixed(2), "MB");
+    console.log("User UID:", user.uid);
 
     setLoading(true);
     setStep("uploading");
@@ -58,31 +66,53 @@ export default function ResumeUpload() {
 
       // Step 1: Analyze Resume
       setStep("analyzing");
+      console.log("[FLOW STEP 1/3] POST /api/analyze-resume initiated...");
       const analysisRes = await fetch("/api/analyze-resume", {
         method: "POST",
         body: formData,
       });
       
       const contentType = analysisRes.headers.get("content-type");
+      console.log("[FLOW STEP 1/3] Response status:", analysisRes.status, "Content-Type:", contentType);
+      
       if (!analysisRes.ok || !contentType || !contentType.includes("application/json")) {
         const errorText = await analysisRes.text();
-        console.error("Server error response:", errorText);
-        throw new Error(`Server returned ${analysisRes.status}: ${errorText.substring(0, 100)}...`);
+        console.error("[FLOW STEP 1/3] Failed with server response:", errorText);
+        throw new Error(`Analyze Resume failed (HTTP ${analysisRes.status}): ${errorText.substring(0, 100)}`);
       }
       
       const analysisData = await analysisRes.json();
+      console.log("[FLOW STEP 1/3] Extracted text length:", analysisData.text?.length, "characters");
+      console.log("[FLOW STEP 1/3] Extracted analysis profile name:", analysisData.analysis?.name);
       
-      if (analysisData.error) throw new Error(analysisData.error);
+      if (analysisData.error) {
+        throw new Error(analysisData.error);
+      }
 
       // Step 2: Generate Questions
+      console.log("[FLOW STEP 2/3] POST /api/generate-questions initiated...");
       const questionsRes = await fetch("/api/generate-questions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ analysis: analysisData.analysis }),
       });
+      
+      const qContentType = questionsRes.headers.get("content-type");
+      console.log("[FLOW STEP 2/3] Response status:", questionsRes.status, "Content-Type:", qContentType);
+      
+      if (!questionsRes.ok || !qContentType || !qContentType.includes("application/json")) {
+        const errorText = await questionsRes.text();
+        console.error("[FLOW STEP 2/3] Failed with server response:", errorText);
+        throw new Error(`Generate Questions failed (HTTP ${questionsRes.status}): ${errorText.substring(0, 100)}`);
+      }
+      
       const questionsData = await questionsRes.json();
+      console.log("[FLOW STEP 2/3] Generated questions count:", questionsData.questions?.length);
 
-      // Step 3: Create Interview Record
+      // Step 3: Create Interview Record in Firestore
+      console.log("[FLOW STEP 3/3] Firestore addDoc (collection 'interviews') initiated...");
+      console.log("[FLOW STEP 3/3] Collection:", "interviews", "Payload user ID:", user.uid);
+      
       const interviewRef = await addDoc(collection(db, "interviews"), {
         userId: user.uid,
         resumeName: file.name,
@@ -92,17 +122,23 @@ export default function ResumeUpload() {
         createdAt: new Date().toISOString(),
       });
 
+      console.log("[FLOW STEP 3/3] Firestore write SUCCESS. Document ID created:", interviewRef.id);
+
       setStep("ready");
+      console.log("--- RESUME UPLOAD FLOW COMPLETED SUCCESSFULLY ---");
+      
       setTimeout(() => {
+        console.log("Navigating to interview room:", `/interview/${interviewRef.id}`);
         navigate(`/interview/${interviewRef.id}`);
       }, 1000);
 
     } catch (err: any) {
-      console.error(err);
+      console.error("!!! RESUME UPLOAD FLOW FAILED !!!", err);
       setError(err.message || "Failed to process resume. Please try again.");
       setStep("idle");
     } finally {
       setLoading(false);
+      console.log("--- END RESUME UPLOAD FLOW (loading reset to false) ---");
     }
   };
 
