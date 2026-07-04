@@ -7,8 +7,8 @@ import {
   useLocation 
 } from "react-router-dom";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, db } from "./lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { auth } from "./lib/firebase";
+import { supabase } from "./lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 
 // Components
@@ -111,29 +111,33 @@ export default function App() {
       clearTimeout(timeoutId);
       if (fbUser) {
         setUser(fbUser);
-        const docRef = doc(db, "users", fbUser.uid);
         try {
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setProfile(docSnap.data());
+          const { data: existingUser, error: fetchError } = await supabase
+            .from("users")
+            .select("*")
+            .eq("userId", fbUser.uid)
+            .maybeSingle();
+
+          if (fetchError) throw fetchError;
+
+          if (existingUser) {
+            setProfile(existingUser);
           } else {
             const newProfile = {
               userId: fbUser.uid,
-              email: fbUser.email,
-              displayName: fbUser.displayName,
-              photoURL: fbUser.photoURL,
+              email: fbUser.email || "user@example.com",
+              displayName: fbUser.displayName || "User",
+              photoURL: fbUser.photoURL || null,
               createdAt: new Date().toISOString(),
             };
-            await setDoc(docRef, newProfile);
+            const { error: insertError } = await supabase
+              .from("users")
+              .insert(newProfile);
+            if (insertError) throw insertError;
             setProfile(newProfile);
           }
         } catch (e: any) {
-          const isOfflineErr = e?.message?.includes("offline") || e?.message?.includes("network") || e?.code?.includes("offline");
-          if (isOfflineErr) {
-            console.warn("Firestore is running in offline fallback mode for profile fetch:", e.message || e);
-          } else {
-            console.warn("Error reading profile from Firestore (using local fallback):", e.message || e);
-          }
+          console.warn("Error reading profile from Supabase (using local fallback):", e.message || e);
           // Standard memory profile fallback
           setProfile({
             userId: fbUser.uid,

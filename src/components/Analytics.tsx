@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../App";
-import { db } from "../lib/firebase";
-import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { motion } from "motion/react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
@@ -39,24 +38,23 @@ export default function Analytics() {
     const fetchAllInterviews = async () => {
       if (!user) return;
       try {
-        const q = query(
-          collection(db, "interviews"),
-          where("userId", "==", user.uid)
-        );
-        const querySnapshot = await getDocs(q);
-        const data = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as any[];
+        const { data, error } = await supabase
+          .from("interviews")
+          .select("*")
+          .eq("userId", user.uid);
+
+        if (error) throw error;
+
+        const resultsData = data || [];
         
-        // Sort in-memory to prevent requiring composite index in Firestore
-        data.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        // Sort in-memory to prevent requiring composite index
+        resultsData.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         
         // Filter out in-progress interviews
-        const completed = data.filter((item: any) => item.status === "completed" && item.results);
+        const completed = resultsData.filter((item: any) => item.status === "completed" && item.results);
         setInterviews(completed);
       } catch (err: any) {
-        console.warn("Firestore offline / error fetching completed interviews for analytics:", err?.message || err);
+        console.warn("Supabase offline / error fetching completed interviews for analytics:", err?.message || err);
       } finally {
         setLoading(false);
       }

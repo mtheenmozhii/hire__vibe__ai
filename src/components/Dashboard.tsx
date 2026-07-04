@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../App";
-import { db } from "../lib/firebase";
-import { collection, query, where, orderBy, getDocs, limit } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { motion } from "motion/react";
 const MotionDiv = motion.div as any;
 import { 
@@ -40,20 +39,17 @@ export default function Dashboard() {
     const fetchInterviews = async () => {
       if (!user) return;
       try {
-        const q = query(
-          collection(db, "interviews"),
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc"),
-          limit(5)
-        );
-        const querySnapshot = await getDocs(q);
-        const data = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setInterviews(data);
+        const { data, error } = await supabase
+          .from("interviews")
+          .select("*")
+          .eq("userId", user.uid)
+          .order("createdAt", { ascending: false })
+          .limit(5);
+
+        if (error) throw error;
+        setInterviews(data || []);
       } catch (err: any) {
-        console.warn("Firestore offline / error fetching interviews (using local state fallback):", err?.message || err);
+        console.warn("Supabase offline / error fetching interviews (using local state fallback):", err?.message || err);
       } finally {
         setLoading(false);
       }

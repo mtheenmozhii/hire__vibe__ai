@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../App";
-import { db } from "../lib/firebase";
-import { collection, addDoc, query, where, orderBy, getDocs, limit } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Brain, 
@@ -160,20 +159,18 @@ export default function Aptitude() {
     setLoadingHistory(true);
     let firestoreData: Attempt[] = [];
     try {
-      // Only query Firestore if NOT a local guest ID
+      // Only query Supabase if NOT a local guest ID
       if (user.uid && !user.uid.startsWith("guest-user-")) {
-        const q = query(
-          collection(db, "aptitudeAttempts"),
-          where("userId", "==", user.uid)
-        );
-        const querySnapshot = await getDocs(q);
-        firestoreData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Attempt[];
+        const { data, error } = await supabase
+          .from("aptitudeAttempts")
+          .select("*")
+          .eq("userId", user.uid);
+
+        if (error) throw error;
+        firestoreData = (data || []) as Attempt[];
       }
     } catch (e: any) {
-      console.warn("Firestore offline / error reading history from Firestore: ", e?.message || e);
+      console.warn("Supabase offline / error reading history from Supabase: ", e?.message || e);
     }
 
     // Always fetch and merge local attempts for the current user ID
@@ -328,22 +325,25 @@ export default function Aptitude() {
       console.error("Error backing up attempt locally:", err);
     }
 
-    // Save To Firestore if they are authenticated via traditional Firebase Auth
+    // Save To Supabase if they are authenticated via traditional Firebase Auth
     if (user && !user.uid.startsWith("guest-user-")) {
       try {
-        await addDoc(collection(db, "aptitudeAttempts"), {
-          userId: user.uid,
-          category,
-          difficulty,
-          score,
-          totalQuestions: questions.length,
-          correctAnswers: correct,
-          incorrectAnswers: incorrect,
-          durationSeconds: totalTimeAllowed - timer,
-          createdAt: new Date().toISOString()
-        });
+        const { error } = await supabase
+          .from("aptitudeAttempts")
+          .insert({
+            userId: user.uid,
+            category,
+            difficulty,
+            score,
+            totalQuestions: questions.length,
+            correctAnswers: correct,
+            incorrectAnswers: incorrect,
+            durationSeconds: totalTimeAllowed - timer,
+            createdAt: new Date().toISOString()
+          });
+        if (error) throw error;
       } catch (err: any) {
-        console.warn("Firestore offline / error saving aptitude score to Firestore: ", err?.message || err);
+        console.warn("Supabase offline / error saving aptitude score to Supabase: ", err?.message || err);
       }
     }
     

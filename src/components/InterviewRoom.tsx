@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { db } from "../lib/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   ChevronRight, 
@@ -41,15 +40,27 @@ export default function InterviewRoom() {
   useEffect(() => {
     const fetchInterview = async () => {
       if (!interviewId) return;
-      const docSnap = await getDoc(doc(db, "interviews", interviewId));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setInterview(data);
-        setAnswers(new Array(data.questions.length).fill(""));
-      } else {
+      try {
+        const { data, error } = await supabase
+          .from("interviews")
+          .select("*")
+          .eq("id", interviewId)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          setInterview(data);
+          setAnswers(new Array(data.questions.length).fill(""));
+        } else {
+          navigate("/");
+        }
+      } catch (err) {
+        console.error("Error fetching interview from Supabase:", err);
         navigate("/");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchInterview();
@@ -181,11 +192,16 @@ export default function InterviewRoom() {
       });
       const evalData = await evalRes.json();
 
-      await updateDoc(doc(db, "interviews", interviewId), {
-        answers: finalAnswers,
-        results: evalData.evaluation,
-        status: "completed"
-      });
+      const { error: updateError } = await supabase
+        .from("interviews")
+        .update({
+          answers: finalAnswers,
+          results: evalData.evaluation,
+          status: "completed"
+        })
+        .eq("id", interviewId);
+
+      if (updateError) throw updateError;
 
       navigate(`/results/${interviewId}`);
     } catch (err) {

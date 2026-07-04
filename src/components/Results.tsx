@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { db } from "../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { motion } from "motion/react";
 const MotionDiv = motion.div as any;
 import { 
@@ -38,17 +37,29 @@ export default function Results() {
   useEffect(() => {
     const fetchResults = async () => {
       if (!interviewId) return;
-      const docSnap = await getDoc(doc(db, "interviews", interviewId));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.status !== "completed") {
-          navigate(`/interview/${interviewId}`);
+      try {
+        const { data, error } = await supabase
+          .from("interviews")
+          .select("*")
+          .eq("id", interviewId)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          if (data.status !== "completed") {
+            navigate(`/interview/${interviewId}`);
+          }
+          setInterview(data);
+        } else {
+          navigate("/");
         }
-        setInterview(data);
-      } else {
+      } catch (err) {
+        console.error("Error fetching results from Supabase:", err);
         navigate("/");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchResults();

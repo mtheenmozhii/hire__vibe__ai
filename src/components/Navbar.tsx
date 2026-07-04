@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { auth, db } from "../lib/firebase";
+import { auth } from "../lib/firebase";
 import { signOut } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, 
@@ -40,10 +40,15 @@ export default function Navbar() {
     // Simulate premium authorization and securing payment tunnel
     await new Promise((resolve) => setTimeout(resolve, 1800));
     try {
-      const userDocRef = doc(db, "users", user.uid);
-      await updateDoc(userDocRef, {
-        isPro: true
-      });
+      const { error } = await supabase
+        .from("users")
+        .update({
+          isPro: true
+        })
+        .eq("userId", user.uid);
+
+      if (error) throw error;
+
       setSuccess(true);
       setTimeout(() => {
         setIsModalOpen(false);

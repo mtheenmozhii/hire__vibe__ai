@@ -12,8 +12,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
-import { addDoc, collection } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { useAuth } from "../App";
 import { useNavigate } from "react-router-dom";
 
@@ -109,27 +108,34 @@ export default function ResumeUpload() {
       const questionsData = await questionsRes.json();
       console.log("[FLOW STEP 2/3] Generated questions count:", questionsData.questions?.length);
 
-      // Step 3: Create Interview Record in Firestore
-      console.log("[FLOW STEP 3/3] Firestore addDoc (collection 'interviews') initiated...");
-      console.log("[FLOW STEP 3/3] Collection:", "interviews", "Payload user ID:", user.uid);
+      // Step 3: Create Interview Record in Supabase
+      console.log("[FLOW STEP 3/3] Supabase insert (table 'interviews') initiated...");
+      console.log("[FLOW STEP 3/3] Table:", "interviews", "Payload user ID:", user.uid);
       
-      const interviewRef = await addDoc(collection(db, "interviews"), {
-        userId: user.uid,
-        resumeName: file.name,
-        analysis: analysisData.analysis,
-        questions: questionsData.questions,
-        status: "in-progress",
-        createdAt: new Date().toISOString(),
-      });
+      const { data: insertedData, error: insertError } = await supabase
+        .from("interviews")
+        .insert({
+          userId: user.uid,
+          resumeName: file.name,
+          analysis: analysisData.analysis,
+          questions: questionsData.questions,
+          status: "in-progress",
+          createdAt: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-      console.log("[FLOW STEP 3/3] Firestore write SUCCESS. Document ID created:", interviewRef.id);
+      if (insertError) throw insertError;
+      if (!insertedData) throw new Error("No data returned from Supabase insert");
+
+      console.log("[FLOW STEP 3/3] Supabase write SUCCESS. Document ID created:", insertedData.id);
 
       setStep("ready");
       console.log("--- RESUME UPLOAD FLOW COMPLETED SUCCESSFULLY ---");
       
       setTimeout(() => {
-        console.log("Navigating to interview room:", `/interview/${interviewRef.id}`);
-        navigate(`/interview/${interviewRef.id}`);
+        console.log("Navigating to interview room:", `/interview/${insertedData.id}`);
+        navigate(`/interview/${insertedData.id}`);
       }, 1000);
 
     } catch (err: any) {

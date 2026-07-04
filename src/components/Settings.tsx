@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../App";
-import { db } from "../lib/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { motion } from "motion/react";
 import { 
   Settings as SettingsIcon, 
@@ -37,16 +36,21 @@ export default function Settings() {
     setSaving(true);
     setSavedMessage("");
     try {
-      const userDocRef = doc(db, "users", user.uid);
-      await updateDoc(userDocRef, {
-        jobTitle,
-        difficulty,
-        audioEnabled
-      });
+      const { error } = await supabase
+        .from("users")
+        .update({
+          jobTitle,
+          difficulty,
+          audioEnabled
+        })
+        .eq("userId", user.uid);
+
+      if (error) throw error;
+
       setSavedMessage("Settings saved successfully!");
       setTimeout(() => setSavedMessage(""), 3000);
     } catch (err: any) {
-      console.warn("Firestore offline / error saving settings (settings are local fallback):", err?.message || err);
+      console.warn("Supabase offline / error saving settings (settings are local fallback):", err?.message || err);
       setSavedMessage("Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
