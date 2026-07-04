@@ -14,6 +14,14 @@ const ai = new GoogleGenAI({
 });
 
 export default async function handler(req: any, res: any) {
+  const diagnosticKey = process.env.GEMINI_API_KEY || "";
+  console.log("--- GEMINI API KEY DIAGNOSTICS ---");
+  console.log("Key Exists:", !!diagnosticKey);
+  console.log("Key Length:", diagnosticKey.length);
+  console.log("Key First 6:", diagnosticKey ? diagnosticKey.substring(0, 6) : "N/A");
+  console.log("Key Last 4:", diagnosticKey ? diagnosticKey.substring(diagnosticKey.length - 4) : "N/A");
+  console.log("----------------------------------");
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }

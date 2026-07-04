@@ -24,6 +24,13 @@ app.use(express.json());
 // Logging middleware
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
+  const diagnosticKey = process.env.GEMINI_API_KEY || "";
+  console.log("--- GEMINI API KEY DIAGNOSTICS (Server) ---");
+  console.log("Key Exists:", !!diagnosticKey);
+  console.log("Key Length:", diagnosticKey.length);
+  console.log("Key First 6:", diagnosticKey ? diagnosticKey.substring(0, 6) : "N/A");
+  console.log("Key Last 4:", diagnosticKey ? diagnosticKey.substring(diagnosticKey.length - 4) : "N/A");
+  console.log("-------------------------------------------");
   next();
 });
 
