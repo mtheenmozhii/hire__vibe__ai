@@ -115,16 +115,19 @@ export default function App() {
           const { data: existingUser, error: fetchError } = await supabase
             .from("users")
             .select("*")
-            .eq("userId", fbUser.uid)
+            .eq("user_id", fbUser.uid)
             .maybeSingle();
 
           if (fetchError) throw fetchError;
 
           if (existingUser) {
-            setProfile(existingUser);
+            setProfile({
+              ...existingUser,
+              userId: existingUser.user_id // Ensure memory profile compatibility if any references exist
+            });
           } else {
-            const newProfile = {
-              userId: fbUser.uid,
+            const dbProfile = {
+              user_id: fbUser.uid,
               email: fbUser.email || "user@example.com",
               displayName: fbUser.displayName || "User",
               photoURL: fbUser.photoURL || null,
@@ -132,9 +135,12 @@ export default function App() {
             };
             const { error: insertError } = await supabase
               .from("users")
-              .insert(newProfile);
+              .insert(dbProfile);
             if (insertError) throw insertError;
-            setProfile(newProfile);
+            setProfile({
+              ...dbProfile,
+              userId: fbUser.uid
+            });
           }
         } catch (e: any) {
           console.warn("Error reading profile from Supabase (using local fallback):", e.message || e);

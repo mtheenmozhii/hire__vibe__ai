@@ -41,7 +41,7 @@ export default function Analytics() {
         const { data, error } = await supabase
           .from("interviews")
           .select("*")
-          .eq("userId", user.uid);
+          .eq("user_id", user.uid);
 
         if (error) throw error;
 

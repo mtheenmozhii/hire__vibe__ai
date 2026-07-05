@@ -115,8 +115,8 @@ export default function ResumeUpload() {
       const { data: insertedData, error: insertError } = await supabase
         .from("interviews")
         .insert({
-          userId: user.uid,
-          resumeName: file.name,
+          user_id: user.uid,
+          resume_name: file.name,
           analysis: analysisData.analysis,
           questions: questionsData.questions,
           status: "in-progress",

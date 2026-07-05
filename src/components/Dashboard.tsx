@@ -42,7 +42,7 @@ export default function Dashboard() {
         const { data, error } = await supabase
           .from("interviews")
           .select("*")
-          .eq("userId", user.uid)
+          .eq("user_id", user.uid)
           .order("createdAt", { ascending: false })
           .limit(5);
 

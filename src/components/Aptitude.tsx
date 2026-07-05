@@ -164,7 +164,7 @@ export default function Aptitude() {
         const { data, error } = await supabase
           .from("aptitudeAttempts")
           .select("*")
-          .eq("userId", user.uid);
+          .eq("user_id", user.uid);
 
         if (error) throw error;
         firestoreData = (data || []) as Attempt[];
@@ -331,7 +331,7 @@ export default function Aptitude() {
         const { error } = await supabase
           .from("aptitudeAttempts")
           .insert({
-            userId: user.uid,
+            user_id: user.uid,
             category,
             difficulty,
             score,

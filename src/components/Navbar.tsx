@@ -45,7 +45,7 @@ export default function Navbar() {
         .update({
           isPro: true
         })
-        .eq("userId", user.uid);
+        .eq("user_id", user.uid);
 
       if (error) throw error;
 

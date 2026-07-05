@@ -43,7 +43,7 @@ export default function Settings() {
           difficulty,
           audioEnabled
         })
-        .eq("userId", user.uid);
+        .eq("user_id", user.uid);
 
       if (error) throw error;
 
