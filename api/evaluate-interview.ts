@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -13,7 +13,7 @@ const ai = new GoogleGenAI({
   }
 });
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: Request, res: Response) {
   const diagnosticKey = process.env.GEMINI_API_KEY || "";
   console.log("--- GEMINI API KEY DIAGNOSTICS ---");
   console.log("Key Exists:", !!diagnosticKey);
@@ -28,49 +28,138 @@ export default async function handler(req: any, res: any) {
 
   try {
     const { questions, answers } = req.body;
-    if (!questions || !answers) {
-      return res.status(400).json({ error: "Missing questions or answers data" });
+    console.log("Evaluate interview API called. Questions count:", questions ? questions.length : 0, "Answers count:", answers ? answers.length : 0);
+
+    if (!questions || !Array.isArray(questions)) {
+      console.error("Error: Missing or invalid 'questions' array in request body:", questions);
+      return res.status(400).json({ error: "Missing or invalid 'questions' array in request body." });
+    }
+
+    if (!answers || !Array.isArray(answers)) {
+      console.error("Error: Missing or invalid 'answers' array in request body:", answers);
+      return res.status(400).json({ error: "Missing or invalid 'answers' array in request body." });
     }
 
     const evalPrompt = `
-      Evaluate the following interview answers based on the questions provided.
-      Calculate scores out of 100 and provide detailed feedback.
+      Evaluate the candidate's answers based on the respective interview questions.
+      For each question, evaluate the provided answer. Calculate sub-scores (out of 100) for overallScore, technicalScore, communicationScore, confidenceScore, problemSolvingScore, and provide strengths, weaknesses, an overall descriptive feedback, individual question evaluations (including a score from 1 to 10 for each), and helpful actionable tips.
       
-      Return exactly this JSON structure:
-      {
-        "overallScore": 85,
-        "technicalScore": 80,
-        "communicationScore": 90,
-        "confidenceScore": 85,
-        "problemSolvingScore": 80,
-        "strengths": ["string"],
-        "weaknesses": ["string"],
-        "feedback": "overall detailed feedback",
-        "questionEvaluations": [
-          { "question": "the question", "answer": "the answer", "score": 8, "feedback": "feedback for this answer" }
-        ],
-        "tips": ["improvement tip 1", "tip 2"]
-      }
-      
-      Questions and Answers:
+      Questions and Answers Data:
       ${JSON.stringify({ questions, answers })}
     `;
 
+    const evaluationSchema = {
+      type: Type.OBJECT,
+      properties: {
+        overallScore: { 
+          type: Type.INTEGER, 
+          description: "Overall interview performance score from 0 to 100." 
+        },
+        technicalScore: { 
+          type: Type.INTEGER, 
+          description: "Score representing technical proficiency, from 0 to 100." 
+        },
+        communicationScore: { 
+          type: Type.INTEGER, 
+          description: "Score representing communication skills, from 0 to 100." 
+        },
+        confidenceScore: { 
+          type: Type.INTEGER, 
+          description: "Score representing confidence level, from 0 to 100." 
+        },
+        problemSolvingScore: { 
+          type: Type.INTEGER, 
+          description: "Score representing problem solving abilities, from 0 to 100." 
+        },
+        strengths: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "List of identified key strengths during the interview."
+        },
+        weaknesses: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "List of identified weaknesses or areas of improvement."
+        },
+        feedback: { 
+          type: Type.STRING, 
+          description: "Overall comprehensive performance feedback summary." 
+        },
+        questionEvaluations: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              question: { type: Type.STRING, description: "The interview question asked." },
+              answer: { type: Type.STRING, description: "The candidate's provided answer." },
+              score: { type: Type.INTEGER, description: "Score for this individual answer from 1 to 10." },
+              feedback: { type: Type.STRING, description: "Feedback for this specific answer." }
+            },
+            required: ["question", "answer", "score", "feedback"]
+          },
+          description: "List of evaluations for each question answered."
+        },
+        tips: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Actionable improvement tips."
+        }
+      },
+      required: [
+        "overallScore",
+        "technicalScore",
+        "communicationScore",
+        "confidenceScore",
+        "problemSolvingScore",
+        "strengths",
+        "weaknesses",
+        "feedback",
+        "questionEvaluations",
+        "tips"
+      ]
+    };
+
+    console.log("Sending evaluation request with strict responseSchema to Gemini API...");
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: evalPrompt,
       config: {
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        responseSchema: evaluationSchema
       }
     });
 
-    let jsonStr = response.text || "";
-    jsonStr = jsonStr.replace(/```json|```/g, "").trim();
+    const rawText = response.text || "";
+    console.log("Raw Gemini evaluation response length:", rawText.length);
+
+    // Robust JSON extraction to handle any markdown wrappers or surrounding text
+    const firstBrace = rawText.indexOf("{");
+    const lastBrace = rawText.lastIndexOf("}");
+    let jsonStr = "";
     
-    const evaluation = JSON.parse(jsonStr);
-    return res.json({ evaluation });
-  } catch (error) {
-    console.error("Evaluation error:", error);
-    return res.status(500).json({ error: "Failed to evaluate interview" });
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = rawText.substring(firstBrace, lastBrace + 1);
+    } else {
+      jsonStr = rawText.replace(/```json|```/g, "").trim();
+    }
+
+    try {
+      const evaluation = JSON.parse(jsonStr);
+      console.log("Successfully parsed interview evaluation JSON with strict schema.");
+      return res.status(200).json({ evaluation });
+    } catch (parseError: any) {
+      console.error("JSON PARSING FAILURE EXPLAINED:");
+      console.error("Error Message:", parseError.message);
+      console.error("Attempted to parse string:", jsonStr);
+      console.error("Original raw response from Gemini:", rawText);
+      throw new Error(`AI evaluation response could not be parsed as valid JSON: ${parseError.message}`);
+    }
+  } catch (error: any) {
+    console.error("COMPLETE SERVER STACK TRACE FOR /api/evaluate-interview FAILURE:");
+    console.error(error.stack || error);
+    return res.status(500).json({ 
+      error: "Failed to evaluate interview", 
+      details: error.message || String(error)
+    });
   }
 }
