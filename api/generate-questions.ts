@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { generateWithRetry } from "../lib/geminiRetry";
 
 dotenv.config();
 
@@ -48,7 +49,7 @@ export default async function handler(req: any, res: any) {
       ${JSON.stringify(analysis)}
     `;
 
-    const response = await ai.models.generateContent({
+    const aiResult = await generateWithRetry(ai, {
       model: "gemini-3.5-flash",
       contents: questionsPrompt,
       config: {
@@ -56,7 +57,11 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    let jsonStr = response.text || "";
+    if (!aiResult.success) {
+      return res.status(429).json({ success: false, error: (aiResult as any).error });
+    }
+
+    let jsonStr = aiResult.response.text || "";
     jsonStr = jsonStr.replace(/```json|```/g, "").trim();
     
     const questions = JSON.parse(jsonStr);

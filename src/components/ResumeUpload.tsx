@@ -20,7 +20,7 @@ const MotionDiv = motion.div as any;
 const MotionButton = motion.button as any;
 
 export default function ResumeUpload() {
-  const { user } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,6 +48,14 @@ export default function ResumeUpload() {
     if (!file || !user) {
       console.warn("handleProcessResume aborted: file or user is missing", { hasFile: !!file, hasUser: !!user });
       return;
+    }
+
+    if (profile && !profile.isPro) {
+      const count = profile.resume_count || 0;
+      if (count >= 5) {
+        setError("Monthly Resume Upload Limit Reached.");
+        return;
+      }
     }
 
     console.log("--- START RESUME UPLOAD FLOW ---");
@@ -129,6 +137,30 @@ export default function ResumeUpload() {
       if (!insertedData) throw new Error("No data returned from Supabase insert");
 
       console.log("[FLOW STEP 3/3] Supabase write SUCCESS. Document ID created:", insertedData.id);
+
+      // Increment resume_count
+      const newCount = (profile?.resume_count || 0) + 1;
+      if (user && !user.uid.startsWith("guest-user-")) {
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({ resume_count: newCount })
+          .eq("user_id", user.uid);
+        if (updateError) {
+          console.error("Failed to increment resume_count in Supabase:", updateError);
+        }
+      } else {
+        const persisted = localStorage.getItem("hirevibe_demo_user");
+        if (persisted) {
+          try {
+            const parsed = JSON.parse(persisted);
+            parsed.resume_count = newCount;
+            localStorage.setItem("hirevibe_demo_user", JSON.stringify(parsed));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+      await refreshProfile();
 
       setStep("ready");
       console.log("--- RESUME UPLOAD FLOW COMPLETED SUCCESSFULLY ---");

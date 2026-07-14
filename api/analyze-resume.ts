@@ -4,6 +4,7 @@ import multer from "multer";
 import pdf from "pdf-parse/lib/pdf-parse.js";
 import mammoth from "mammoth";
 import dotenv from "dotenv";
+import { generateWithRetry } from "../lib/geminiRetry";
 
 dotenv.config();
 
@@ -143,7 +144,7 @@ export default async function handler(req: any, res: any) {
             }
           `;
 
-          const response = await ai.models.generateContent({
+          const aiResult = await generateWithRetry(ai, {
             model: "gemini-3.5-flash",
             contents: [
               {
@@ -159,7 +160,11 @@ export default async function handler(req: any, res: any) {
             }
           });
 
-          let jsonStr = response.text || "";
+          if (!aiResult.success) {
+            return res.status(429).json({ success: false, error: (aiResult as any).error });
+          }
+
+          let jsonStr = aiResult.response.text || "";
           console.log("Raw AI fallback response length:", jsonStr.length);
           jsonStr = jsonStr.replace(/```json|```/g, "").trim();
 
@@ -237,7 +242,7 @@ export default async function handler(req: any, res: any) {
         ${text}
       `;
 
-      const response = await ai.models.generateContent({
+      const aiResult = await generateWithRetry(ai, {
         model: "gemini-3.5-flash",
         contents: prompt,
         config: {
@@ -245,7 +250,11 @@ export default async function handler(req: any, res: any) {
         }
       });
       
-      let jsonStr = response.text || "";
+      if (!aiResult.success) {
+        return res.status(429).json({ success: false, error: (aiResult as any).error });
+      }
+
+      let jsonStr = aiResult.response.text || "";
       console.log("Raw AI response length:", jsonStr.length);
       
       // Clean JSON string if Gemini adds markdown blocks

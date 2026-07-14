@@ -28,6 +28,7 @@ interface AuthContextType {
   profile: any | null;
   loginAsGuest: (name?: string, customEmail?: string) => void;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -35,7 +36,8 @@ const AuthContext = createContext<AuthContextType>({
   loading: true, 
   profile: null,
   loginAsGuest: () => {},
-  logout: async () => {}
+  logout: async () => {},
+  refreshProfile: async () => {}
 });
 export const useAuth = () => useContext(AuthContext);
 
@@ -55,11 +57,25 @@ export default function App() {
       const persisted = localStorage.getItem("hirevibe_demo_user");
       if (persisted) {
         const parsed = JSON.parse(persisted);
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const lastReset = parsed.last_reset;
+        if (!lastReset || lastReset.substring(0, 7) !== currentMonth) {
+          parsed.resume_count = 0;
+          parsed.interview_count = 0;
+          parsed.aptitude_count = 0;
+          parsed.last_reset = currentMonth;
+          localStorage.setItem("hirevibe_demo_user", JSON.stringify(parsed));
+        }
         return {
           userId: parsed.uid,
           email: parsed.email,
           displayName: parsed.displayName,
-          createdAt: new Date().toISOString()
+          createdAt: parsed.createdAt || new Date().toISOString(),
+          resume_count: parsed.resume_count ?? 0,
+          interview_count: parsed.interview_count ?? 0,
+          aptitude_count: parsed.aptitude_count ?? 0,
+          last_reset: parsed.last_reset || currentMonth,
+          isPro: parsed.isPro ?? false
         };
       }
       return null;
@@ -72,12 +88,18 @@ export default function App() {
   const loginAsGuest = (name?: string, customEmail?: string) => {
     const emailToUse = customEmail || "guest@example.com";
     const displayNameToUse = name || emailToUse.split("@")[0] || "Developer Guest";
+    const currentMonth = new Date().toISOString().substring(0, 7);
     const guestUser = {
       uid: "guest-user-" + Math.random().toString(36).substring(2, 9),
       email: emailToUse,
       displayName: displayNameToUse.charAt(0).toUpperCase() + displayNameToUse.slice(1),
       photoURL: null,
-      isAnonymous: true
+      isAnonymous: true,
+      resume_count: 0,
+      interview_count: 0,
+      aptitude_count: 0,
+      last_reset: currentMonth,
+      isPro: false
     };
     localStorage.setItem("hirevibe_demo_user", JSON.stringify(guestUser));
     setUser(guestUser);
@@ -85,7 +107,12 @@ export default function App() {
       userId: guestUser.uid,
       email: guestUser.email,
       displayName: guestUser.displayName,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      resume_count: 0,
+      interview_count: 0,
+      aptitude_count: 0,
+      last_reset: currentMonth,
+      isPro: false
     });
   };
 
@@ -120,11 +147,38 @@ export default function App() {
 
           if (fetchError) throw fetchError;
 
+          const currentMonth = new Date().toISOString().substring(0, 7);
+
           if (existingUser) {
-            setProfile({
-              ...existingUser,
-              userId: existingUser.user_id // Ensure memory profile compatibility if any references exist
-            });
+            const dbLastReset = existingUser.last_reset;
+            if (!dbLastReset || dbLastReset.substring(0, 7) !== currentMonth) {
+              const updatedData = {
+                resume_count: 0,
+                interview_count: 0,
+                aptitude_count: 0,
+                last_reset: currentMonth
+              };
+              
+              const { error: updateError } = await supabase
+                .from("users")
+                .update(updatedData)
+                .eq("user_id", fbUser.uid);
+                
+              if (updateError) {
+                console.error("Failed to reset monthly limits in Supabase:", updateError);
+              }
+              
+              setProfile({
+                ...existingUser,
+                ...updatedData,
+                userId: existingUser.user_id
+              });
+            } else {
+              setProfile({
+                ...existingUser,
+                userId: existingUser.user_id
+              });
+            }
           } else {
             const dbProfile = {
               user_id: fbUser.uid,
@@ -132,6 +186,11 @@ export default function App() {
               displayName: fbUser.displayName || "User",
               photoURL: fbUser.photoURL || null,
               createdAt: new Date().toISOString(),
+              resume_count: 0,
+              interview_count: 0,
+              aptitude_count: 0,
+              last_reset: currentMonth,
+              isPro: false
             };
             const { error: insertError } = await supabase
               .from("users")
@@ -144,12 +203,17 @@ export default function App() {
           }
         } catch (e: any) {
           console.warn("Error reading profile from Supabase (using local fallback):", e.message || e);
-          // Standard memory profile fallback
+          const currentMonth = new Date().toISOString().substring(0, 7);
           setProfile({
             userId: fbUser.uid,
             email: fbUser.email || "user@example.com",
             displayName: fbUser.displayName || "User",
             createdAt: new Date().toISOString(),
+            resume_count: 0,
+            interview_count: 0,
+            aptitude_count: 0,
+            last_reset: currentMonth,
+            isPro: false
           });
         }
       } else {
@@ -160,12 +224,26 @@ export default function App() {
         } else {
           try {
             const parsed = JSON.parse(persisted);
+            const currentMonth = new Date().toISOString().substring(0, 7);
+            const lastReset = parsed.last_reset;
+            if (!lastReset || lastReset.substring(0, 7) !== currentMonth) {
+              parsed.resume_count = 0;
+              parsed.interview_count = 0;
+              parsed.aptitude_count = 0;
+              parsed.last_reset = currentMonth;
+              localStorage.setItem("hirevibe_demo_user", JSON.stringify(parsed));
+            }
             setUser(parsed);
             setProfile({
               userId: parsed.uid,
               email: parsed.email,
               displayName: parsed.displayName,
-              createdAt: new Date().toISOString()
+              createdAt: parsed.createdAt || new Date().toISOString(),
+              resume_count: parsed.resume_count ?? 0,
+              interview_count: parsed.interview_count ?? 0,
+              aptitude_count: parsed.aptitude_count ?? 0,
+              last_reset: parsed.last_reset || currentMonth,
+              isPro: parsed.isPro ?? false
             });
           } catch {
             setUser(null);
@@ -182,6 +260,83 @@ export default function App() {
     };
   }, []);
 
+  const refreshProfile = async () => {
+    if (!user) return;
+    if (user.uid.startsWith("guest-user-")) {
+      const persisted = localStorage.getItem("hirevibe_demo_user");
+      if (persisted) {
+        try {
+          const parsed = JSON.parse(persisted);
+          const currentMonth = new Date().toISOString().substring(0, 7);
+          const lastReset = parsed.last_reset;
+          if (!lastReset || lastReset.substring(0, 7) !== currentMonth) {
+            parsed.resume_count = 0;
+            parsed.interview_count = 0;
+            parsed.aptitude_count = 0;
+            parsed.last_reset = currentMonth;
+            localStorage.setItem("hirevibe_demo_user", JSON.stringify(parsed));
+          }
+          setProfile({
+            userId: parsed.uid,
+            email: parsed.email,
+            displayName: parsed.displayName,
+            createdAt: parsed.createdAt || new Date().toISOString(),
+            resume_count: parsed.resume_count ?? 0,
+            interview_count: parsed.interview_count ?? 0,
+            aptitude_count: parsed.aptitude_count ?? 0,
+            last_reset: parsed.last_reset || currentMonth,
+            isPro: parsed.isPro ?? false
+          });
+        } catch (e) {
+          console.error("Error parsing guest profile in refreshProfile:", e);
+        }
+      }
+      return;
+    }
+    
+    try {
+      const { data: existingUser, error: fetchError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("user_id", user.uid)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+
+      if (existingUser) {
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const dbLastReset = existingUser.last_reset;
+        
+        if (!dbLastReset || dbLastReset.substring(0, 7) !== currentMonth) {
+          const updatedData = {
+            resume_count: 0,
+            interview_count: 0,
+            aptitude_count: 0,
+            last_reset: currentMonth
+          };
+          
+          await supabase
+            .from("users")
+            .update(updatedData)
+            .eq("user_id", user.uid);
+            
+          setProfile({
+            ...existingUser,
+            ...updatedData,
+            userId: existingUser.user_id
+          });
+        } else {
+          setProfile({
+            ...existingUser,
+            userId: existingUser.user_id
+          });
+        }
+      }
+    } catch (e: any) {
+      console.warn("Error refreshing profile from Supabase:", e.message || e);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
@@ -195,7 +350,7 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, profile, loginAsGuest, logout }}>
+    <AuthContext.Provider value={{ user, loading, profile, loginAsGuest, logout, refreshProfile }}>
       <Router>
         <div className="min-h-screen flex bg-slate-950 overflow-x-hidden">
           {user && <Navbar />}

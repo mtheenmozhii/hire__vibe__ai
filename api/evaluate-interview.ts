@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { generateWithRetry } from "../lib/geminiRetry";
 
 dotenv.config();
 
@@ -120,7 +121,7 @@ export default async function handler(req: Request, res: Response) {
     };
 
     console.log("Sending evaluation request with strict responseSchema to Gemini API...");
-    const response = await ai.models.generateContent({
+    const aiResult = await generateWithRetry(ai, {
       model: "gemini-3.5-flash",
       contents: evalPrompt,
       config: {
@@ -129,7 +130,11 @@ export default async function handler(req: Request, res: Response) {
       }
     });
 
-    const rawText = response.text || "";
+    if (!aiResult.success) {
+      return res.status(429).json({ success: false, error: (aiResult as any).error });
+    }
+
+    const rawText = aiResult.response.text || "";
     console.log("Raw Gemini evaluation response length:", rawText.length);
 
     // Robust JSON extraction to handle any markdown wrappers or surrounding text

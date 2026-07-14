@@ -181,6 +181,64 @@ export default function Dashboard() {
 
         {/* Right Column - AI Assistant */}
         <div className="space-y-8">
+          {/* Monthly Usage Limit Panel */}
+          <div className="glass-card p-6 border border-slate-800/40">
+            <div className="flex items-center gap-2.5 mb-5">
+              <Rocket className="w-4.5 h-4.5 text-indigo-400" />
+              <h4 className="text-white font-bold text-sm tracking-tight">Monthly Usage Limit</h4>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Resume Upload Limit */}
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1.5">
+                  <span className="text-slate-400">Resume Uploads</span>
+                  <span className="text-white font-bold">{profile?.isPro ? "Unlimited" : `${profile?.resume_count || 0} / 5`}</span>
+                </div>
+                {!profile?.isPro && (
+                  <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800/60">
+                    <div 
+                      style={{ width: `${Math.min(100, ((profile?.resume_count || 0) / 5) * 100)}%` }}
+                      className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Mock Interview Limit */}
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1.5">
+                  <span className="text-slate-400">Mock Interviews</span>
+                  <span className="text-white font-bold">{profile?.isPro ? "Unlimited" : `${profile?.interview_count || 0} / 10`}</span>
+                </div>
+                {!profile?.isPro && (
+                  <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800/60">
+                    <div 
+                      style={{ width: `${Math.min(100, ((profile?.interview_count || 0) / 10) * 100)}%` }}
+                      className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Aptitude Test Limit */}
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1.5">
+                  <span className="text-slate-400">Aptitude Tests</span>
+                  <span className="text-white font-bold">{profile?.isPro ? "Unlimited" : `${profile?.aptitude_count || 0} / 20`}</span>
+                </div>
+                {!profile?.isPro && (
+                  <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800/60">
+                    <div 
+                      style={{ width: `${Math.min(100, ((profile?.aptitude_count || 0) / 20) * 100)}%` }}
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="glass-card p-6 flex flex-col h-[500px]">
             <div className="flex items-center gap-2 mb-6">
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>

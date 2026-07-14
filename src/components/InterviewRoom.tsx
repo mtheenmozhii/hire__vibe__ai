@@ -19,10 +19,12 @@ import {
   Globe
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useAuth } from "../App";
 
 const MotionDiv = motion.div as any;
 
 export default function InterviewRoom() {
+  const { user, profile, refreshProfile } = useAuth();
   const { interviewId } = useParams();
   const navigate = useNavigate();
   const [interview, setInterview] = useState<any>(null);
@@ -179,6 +181,10 @@ export default function InterviewRoom() {
 
   const handleSubmit = async (finalAnswers: string[]) => {
     if (!interviewId) return;
+    if (profile && !profile.isPro && (profile.interview_count || 0) >= 10) {
+      alert("Monthly Interview Limit Reached.");
+      return;
+    }
     setSubmitting(true);
     try {
       // API call to evaluate
@@ -203,6 +209,30 @@ export default function InterviewRoom() {
 
       if (updateError) throw updateError;
 
+      // Increment interview_count
+      const newCount = (profile?.interview_count || 0) + 1;
+      if (user && !user.uid.startsWith("guest-user-")) {
+        const { error: userUpdateError } = await supabase
+          .from("users")
+          .update({ interview_count: newCount })
+          .eq("user_id", user.uid);
+        if (userUpdateError) {
+          console.error("Failed to increment interview_count in Supabase:", userUpdateError);
+        }
+      } else {
+        const persisted = localStorage.getItem("hirevibe_demo_user");
+        if (persisted) {
+          try {
+            const parsed = JSON.parse(persisted);
+            parsed.interview_count = newCount;
+            localStorage.setItem("hirevibe_demo_user", JSON.stringify(parsed));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+      await refreshProfile();
+
       navigate(`/results/${interviewId}`);
     } catch (err) {
       console.error("Evaluation failed", err);
@@ -213,6 +243,28 @@ export default function InterviewRoom() {
   };
 
   if (loading) return null;
+
+  if (profile && !profile.isPro && (profile.interview_count || 0) >= 10) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="max-w-md w-full glass-card p-8 border border-red-500/30 text-center rounded-3xl">
+          <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-red-400 mx-auto mb-6 border border-red-500/20">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-black text-white mb-3">Limit Reached</h2>
+          <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+            Monthly Interview Limit Reached.
+          </p>
+          <button 
+            onClick={() => navigate("/")}
+            className="px-6 py-3 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const currentQuestion = interview.questions[currentIdx];
   const progress = ((currentIdx + 1) / interview.questions.length) * 100;

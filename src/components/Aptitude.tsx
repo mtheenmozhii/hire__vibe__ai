@@ -19,7 +19,8 @@ import {
   Check,
   ChevronRight,
   Info,
-  Loader2
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 
 const MotionDiv = motion.div as any;
@@ -112,7 +113,7 @@ const offlineQuestions: Record<string, Question[]> = {
 };
 
 export default function Aptitude() {
-  const { user } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [phase, setPhase] = useState<"setup" | "testing" | "score">("setup");
   
   // Settings
@@ -223,8 +224,22 @@ export default function Aptitude() {
     return () => clearInterval(interval);
   }, [phase, questions, selectedAnswers]);
 
+  const [aptitudeError, setAptitudeError] = useState("");
+
+  useEffect(() => {
+    if (profile && !profile.isPro && (profile.aptitude_count || 0) >= 20) {
+      setAptitudeError("Monthly Aptitude Test Limit Reached.");
+    } else {
+      setAptitudeError("");
+    }
+  }, [profile]);
+
   // Setup / Start Test
   const handleStartTest = async () => {
+    if (profile && !profile.isPro && (profile.aptitude_count || 0) >= 20) {
+      setAptitudeError("Monthly Aptitude Test Limit Reached.");
+      return;
+    }
     setLoadingQuestions(true);
     try {
       let finalQuestions: Question[] = [];
@@ -324,6 +339,34 @@ export default function Aptitude() {
     } catch (err) {
       console.error("Error backing up attempt locally:", err);
     }
+
+    // Increment aptitude_count
+    const newCount = (profile?.aptitude_count || 0) + 1;
+    if (user && !user.uid.startsWith("guest-user-")) {
+      try {
+        const { error: userUpdateError } = await supabase
+          .from("users")
+          .update({ aptitude_count: newCount })
+          .eq("user_id", user.uid);
+        if (userUpdateError) {
+          console.error("Failed to increment aptitude_count in Supabase:", userUpdateError);
+        }
+      } catch (e) {
+        console.error("Error updating user table aptitude_count:", e);
+      }
+    } else {
+      const persisted = localStorage.getItem("hirevibe_demo_user");
+      if (persisted) {
+        try {
+          const parsed = JSON.parse(persisted);
+          parsed.aptitude_count = newCount;
+          localStorage.setItem("hirevibe_demo_user", JSON.stringify(parsed));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+    await refreshProfile();
 
     // Save To Supabase if they are authenticated via traditional Firebase Auth
     if (user && !user.uid.startsWith("guest-user-")) {
@@ -460,10 +503,17 @@ export default function Aptitude() {
                   </div>
                 </div>
 
+                {aptitudeError && (
+                  <div className="p-4 bg-red-500/10 text-red-400 rounded-xl flex items-center gap-3 text-xs border border-red-500/20 mb-4">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 animate-pulse" />
+                    <span>{aptitudeError}</span>
+                  </div>
+                )}
+
                 <button
                   onClick={handleStartTest}
-                  disabled={loadingQuestions}
-                  className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all hover:scale-[1.01] flex items-center justify-center gap-2"
+                  disabled={loadingQuestions || !!aptitudeError}
+                  className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all hover:scale-[1.01] flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {loadingQuestions ? (
                     <>
