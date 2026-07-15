@@ -1,7 +1,6 @@
 import type { Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
 import multer from "multer";
-import pdf from "pdf-parse/lib/pdf-parse.js";
 import mammoth from "mammoth";
 import dotenv from "dotenv";
 import { generateWithRetry } from "../lib/geminiRetry";
@@ -95,7 +94,6 @@ export default async function handler(req: any, res: any) {
 
     let text = "";
     let analysis: any = null;
-    let fallbackUsed = false;
 
     const isPdf = mimetype === "application/pdf" || filename.toLowerCase().endsWith(".pdf");
     const isDocx = mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
@@ -104,87 +102,67 @@ export default async function handler(req: any, res: any) {
 
     if (isPdf) {
       try {
-        console.log(`Starting PDF parsing for "${filename}"...`);
+        console.log(`Starting native Gemini PDF parsing and analysis for "${filename}"...`);
         if (bufferSize === 0) {
           throw new Error("File buffer is empty (0 bytes).");
         }
         
-        // Attempt local parsing using pdf-parse
-        try {
-          const result = await pdf(fileBuffer);
-          text = result.text || "";
-        } catch (pdfParseErr) {
-          console.warn(`pdf-parse failed internally for "${filename}":`, pdfParseErr);
-          text = "";
+        const pdfPrompt = `
+          You are an expert resume parser and analyzer.
+          First, extract the complete, readable plain text of the entire resume document.
+          Second, analyze the resume and extract the structured information.
+          
+          You must return a JSON object with exactly the following structure:
+          {
+            "extractedText": "the full extracted plain text of the resume document",
+            "analysis": {
+              "name": "full name",
+              "email": "email address",
+              "skills": ["skill1", "skill2"],
+              "experience": [{"title": "Job Title", "company": "Company Name", "duration": "Duration", "description": "Short summary"}],
+              "education": [{"degree": "Degree", "institution": "School/University", "year": "Year"}],
+              "projects": [{"name": "Project Name", "description": "Project Summary"}],
+              "summary": "Professional summary"
+            }
+          }
+        `;
+
+        const aiResult = await generateWithRetry(ai, {
+          model: "gemini-3.5-flash",
+          contents: [
+            {
+              inlineData: {
+                data: fileBuffer.toString("base64"),
+                mimeType: "application/pdf"
+              }
+            },
+            pdfPrompt
+          ],
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+
+        if (!aiResult.success) {
+          return res.status(429).json({ success: false, error: (aiResult as any).error });
         }
 
-        console.log(`pdf-parse extracted text length: ${text.length} characters.`);
-        
-        // If pdf-parse failed or extracted very little text, fallback to Gemini native multimodal PDF parsing
-        if (!text || text.trim().length < 50) {
-          console.log(`pdf-parse extracted text is too short or empty (${text.length} chars). Falling back to native Gemini multimodal PDF parsing...`);
-          
-          const fallbackPrompt = `
-            You are an expert resume parser and analyzer.
-            First, extract the complete, readable plain text of the entire resume document.
-            Second, analyze the resume and extract the structured information.
-            
-            You must return a JSON object with exactly the following structure:
-            {
-              "extractedText": "the full extracted plain text of the resume document",
-              "analysis": {
-                "name": "full name",
-                "email": "email address",
-                "skills": ["skill1", "skill2"],
-                "experience": [{"title": "Job Title", "company": "Company Name", "duration": "Duration", "description": "Short summary"}],
-                "education": [{"degree": "Degree", "institution": "School/University", "year": "Year"}],
-                "projects": [{"name": "Project Name", "description": "Project Summary"}],
-                "summary": "Professional summary"
-              }
-            }
-          `;
+        let jsonStr = aiResult.response.text || "";
+        console.log("Raw AI response length:", jsonStr.length);
+        jsonStr = jsonStr.replace(/```json|```/g, "").trim();
 
-          const aiResult = await generateWithRetry(ai, {
-            model: "gemini-3.5-flash",
-            contents: [
-              {
-                inlineData: {
-                  data: fileBuffer.toString("base64"),
-                  mimeType: "application/pdf"
-                }
-              },
-              fallbackPrompt
-            ],
-            config: {
-              responseMimeType: "application/json"
-            }
-          });
-
-          if (!aiResult.success) {
-            return res.status(429).json({ success: false, error: (aiResult as any).error });
-          }
-
-          let jsonStr = aiResult.response.text || "";
-          console.log("Raw AI fallback response length:", jsonStr.length);
-          jsonStr = jsonStr.replace(/```json|```/g, "").trim();
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            text = parsed.extractedText || "";
-            analysis = parsed.analysis || {};
-            fallbackUsed = true;
-            console.log(`Gemini fallback parsed successfully. Extracted text length: ${text.length} characters.`);
-          } catch (parseError) {
-            console.error("Gemini fallback JSON parse error:", parseError, "Original string:", jsonStr);
-            throw new Error("Failed to parse Gemini fallback response JSON");
-          }
-        } else {
-          console.log(`PDF parsed successfully via pdf-parse. Extracted text length: ${text.length} characters.`);
-          console.log(`First 100 characters of extracted text: "${text.substring(0, 100).replace(/\r?\n/g, ' ')}"`);
+        try {
+          const parsed = JSON.parse(jsonStr);
+          text = parsed.extractedText || "";
+          analysis = parsed.analysis || {};
+          console.log(`Gemini native PDF parsing completed successfully. Extracted text length: ${text.length} characters.`);
+        } catch (parseError) {
+          console.error("Gemini native PDF JSON parse error:", parseError, "Original string:", jsonStr);
+          throw new Error("Failed to parse Gemini response JSON");
         }
       } catch (pdfError) {
         const errMsg = pdfError instanceof Error ? pdfError.message : String(pdfError);
-        console.error(`PDF parsing/fallback error for "${filename}":`, pdfError);
+        console.error(`PDF native Gemini parsing error for "${filename}":`, pdfError);
         return res.status(500).json({ error: `Failed to parse PDF document: ${errMsg}` });
       }
     } else if (isDocx) {
@@ -200,6 +178,55 @@ export default async function handler(req: any, res: any) {
           console.log("Mammoth warnings/messages during parsing:", data.messages);
         }
         console.log(`First 100 characters of extracted text: "${text.substring(0, 100).replace(/\r?\n/g, ' ')}"`);
+
+        if (!text || text.trim().length === 0) {
+          console.error(`Text extraction yielded zero content for "${filename}". (Mimetype: "${mimetype}", Extracted: ${text ? text.length : 0} chars)`);
+          return res.status(400).json({ 
+            error: "Could not extract any text from the document. The file might be scanned, empty, or password-protected. Please upload a document containing readable text." 
+          });
+        }
+
+        const prompt = `
+          Analyze the following resume text and extract the information in JSON format.
+          Return exactly this structure:
+          {
+            "name": "full name",
+            "email": "email address",
+            "skills": ["skill1", "skill2"],
+            "experience": [{"title": "Job Title", "company": "Company Name", "duration": "Duration", "description": "Short summary"}],
+            "education": [{"degree": "Degree", "institution": "School/University", "year": "Year"}],
+            "projects": [{"name": "Project Name", "description": "Project Summary"}],
+            "summary": "Professional summary"
+          }
+          
+          Resume text:
+          ${text}
+        `;
+
+        const aiResult = await generateWithRetry(ai, {
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+        
+        if (!aiResult.success) {
+          return res.status(429).json({ success: false, error: (aiResult as any).error });
+        }
+
+        let jsonStr = aiResult.response.text || "";
+        console.log("Raw AI response length:", jsonStr.length);
+        
+        // Clean JSON string if Gemini adds markdown blocks
+        jsonStr = jsonStr.replace(/```json|```/g, "").trim();
+        
+        try {
+          analysis = JSON.parse(jsonStr);
+        } catch (parseError) {
+          console.error("JSON parse error:", parseError, "Original string:", jsonStr);
+          return res.status(500).json({ error: "AI returned invalid JSON" });
+        }
       } catch (docxError) {
         const errMsg = docxError instanceof Error ? docxError.message : String(docxError);
         console.error(`DOCX parsing error for "${filename}":`, docxError);
@@ -222,50 +249,6 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ 
         error: "Could not extract any text from the document. The file might be scanned, empty, or password-protected. Please upload a document containing readable text." 
       });
-    }
-
-    if (!fallbackUsed) {
-      const prompt = `
-        Analyze the following resume text and extract the information in JSON format.
-        Return exactly this structure:
-        {
-          "name": "full name",
-          "email": "email address",
-          "skills": ["skill1", "skill2"],
-          "experience": [{"title": "Job Title", "company": "Company Name", "duration": "Duration", "description": "Short summary"}],
-          "education": [{"degree": "Degree", "institution": "School/University", "year": "Year"}],
-          "projects": [{"name": "Project Name", "description": "Project Summary"}],
-          "summary": "Professional summary"
-        }
-        
-        Resume text:
-        ${text}
-      `;
-
-      const aiResult = await generateWithRetry(ai, {
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json"
-        }
-      });
-      
-      if (!aiResult.success) {
-        return res.status(429).json({ success: false, error: (aiResult as any).error });
-      }
-
-      let jsonStr = aiResult.response.text || "";
-      console.log("Raw AI response length:", jsonStr.length);
-      
-      // Clean JSON string if Gemini adds markdown blocks
-      jsonStr = jsonStr.replace(/```json|```/g, "").trim();
-      
-      try {
-        analysis = JSON.parse(jsonStr);
-      } catch (parseError) {
-        console.error("JSON parse error:", parseError, "Original string:", jsonStr);
-        return res.status(500).json({ error: "AI returned invalid JSON" });
-      }
     }
 
     return res.json({ analysis, text });
