@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import multer from "multer";
 import mammoth from "mammoth";
 import dotenv from "dotenv";
-import { generateWithRetry } from "../lib/geminiRetry";
+import { generateWithRetry } from "../lib/geminiRetry.js";
 
 dotenv.config();
 
