@@ -37,19 +37,19 @@ export const config = {
 };
 
 export default async function handler(req: any, res: any) {
-  const diagnosticKey = process.env.GEMINI_API_KEY || "";
-  console.log("--- GEMINI API KEY DIAGNOSTICS ---");
-  console.log("Key Exists:", !!diagnosticKey);
-  console.log("Key Length:", diagnosticKey.length);
-  console.log("Key First 6:", diagnosticKey ? diagnosticKey.substring(0, 6) : "N/A");
-  console.log("Key Last 4:", diagnosticKey ? diagnosticKey.substring(diagnosticKey.length - 4) : "N/A");
-  console.log("----------------------------------");
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
-
   try {
+    const diagnosticKey = process.env.GEMINI_API_KEY || "";
+    console.log("--- GEMINI API KEY DIAGNOSTICS ---");
+    console.log("Key Exists:", !!diagnosticKey);
+    console.log("Key Length:", diagnosticKey.length);
+    console.log("Key First 6:", diagnosticKey ? diagnosticKey.substring(0, 6) : "N/A");
+    console.log("Key Last 4:", diagnosticKey ? diagnosticKey.substring(diagnosticKey.length - 4) : "N/A");
+    console.log("----------------------------------");
+
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method Not Allowed" });
+    }
+
     // Run multer middleware
     await runMiddleware(req, res, upload.single("resume"));
 
@@ -127,21 +127,29 @@ export default async function handler(req: any, res: any) {
           }
         `;
 
-        const aiResult = await generateWithRetry(ai, {
-          model: "gemini-3.5-flash",
-          contents: [
-            {
-              inlineData: {
-                data: fileBuffer.toString("base64"),
-                mimeType: "application/pdf"
-              }
-            },
-            pdfPrompt
-          ],
-          config: {
-            responseMimeType: "application/json"
-          }
-        });
+        let aiResult;
+        try {
+          aiResult = await generateWithRetry(ai, {
+            model: "gemini-3.5-flash",
+            contents: [
+              {
+                inlineData: {
+                  data: fileBuffer.toString("base64"),
+                  mimeType: "application/pdf"
+                }
+              },
+              pdfPrompt
+            ],
+            config: {
+              responseMimeType: "application/json"
+            }
+          });
+        } catch (err: any) {
+          console.error("GEMINI ERROR");
+          console.error(err);
+          console.error(err?.stack);
+          throw err;
+        }
 
         if (!aiResult.success) {
           return res.status(429).json({ success: false, error: (aiResult as any).error });
@@ -160,10 +168,11 @@ export default async function handler(req: any, res: any) {
           console.error("Gemini native PDF JSON parse error:", parseError, "Original string:", jsonStr);
           throw new Error("Failed to parse Gemini response JSON");
         }
-      } catch (pdfError) {
-        const errMsg = pdfError instanceof Error ? pdfError.message : String(pdfError);
-        console.error(`PDF native Gemini parsing error for "${filename}":`, pdfError);
-        return res.status(500).json({ error: `Failed to parse PDF document: ${errMsg}` });
+      } catch (err: any) {
+        console.error("PDF PARSE ERROR");
+        console.error(err);
+        console.error(err?.stack);
+        throw err;
       }
     } else if (isDocx) {
       try {
@@ -203,13 +212,21 @@ export default async function handler(req: any, res: any) {
           ${text}
         `;
 
-        const aiResult = await generateWithRetry(ai, {
-          model: "gemini-3.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json"
-          }
-        });
+        let aiResult;
+        try {
+          aiResult = await generateWithRetry(ai, {
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json"
+            }
+          });
+        } catch (err: any) {
+          console.error("GEMINI ERROR");
+          console.error(err);
+          console.error(err?.stack);
+          throw err;
+        }
         
         if (!aiResult.success) {
           return res.status(429).json({ success: false, error: (aiResult as any).error });
@@ -252,7 +269,12 @@ export default async function handler(req: any, res: any) {
     }
 
     return res.json({ analysis, text });
-  } catch (error) {
+  } catch (error: any) {
+    console.error("========== ANALYZE RESUME ERROR ==========");
+    console.error(error);
+    console.error(error?.stack);
+    console.error(error?.message);
+    console.error("==========================================");
     console.error("Resume analysis error:", error);
     return res.status(500).json({ error: error instanceof Error ? error.message : "Failed to analyze resume" });
   }
