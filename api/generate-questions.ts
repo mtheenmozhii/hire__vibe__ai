@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { generateWithRetry } from "../lib/geminiRetry";
+import { generateWithRetry } from "../lib/geminiRetry.js";
 
 dotenv.config();
 
