@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { generateWithRetry } from "../lib/geminiRetry";
+import { generateWithRetry } from "../lib/geminiRetry.js";
 
 dotenv.config();
 
@@ -15,19 +15,19 @@ const ai = new GoogleGenAI({
 });
 
 export default async function handler(req: Request, res: Response) {
-  const diagnosticKey = process.env.GEMINI_API_KEY || "";
-  console.log("--- GEMINI API KEY DIAGNOSTICS ---");
-  console.log("Key Exists:", !!diagnosticKey);
-  console.log("Key Length:", diagnosticKey.length);
-  console.log("Key First 6:", diagnosticKey ? diagnosticKey.substring(0, 6) : "N/A");
-  console.log("Key Last 4:", diagnosticKey ? diagnosticKey.substring(diagnosticKey.length - 4) : "N/A");
-  console.log("----------------------------------");
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
-
   try {
+    const diagnosticKey = process.env.GEMINI_API_KEY || "";
+    console.log("--- GEMINI API KEY DIAGNOSTICS ---");
+    console.log("Key Exists:", !!diagnosticKey);
+    console.log("Key Length:", diagnosticKey.length);
+    console.log("Key First 6:", diagnosticKey ? diagnosticKey.substring(0, 6) : "N/A");
+    console.log("Key Last 4:", diagnosticKey ? diagnosticKey.substring(diagnosticKey.length - 4) : "N/A");
+    console.log("----------------------------------");
+
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method Not Allowed" });
+    }
+
     const { questions, answers } = req.body;
     console.log("Evaluate interview API called. Questions count:", questions ? questions.length : 0, "Answers count:", answers ? answers.length : 0);
 
@@ -41,6 +41,7 @@ export default async function handler(req: Request, res: Response) {
       return res.status(400).json({ error: "Missing or invalid 'answers' array in request body." });
     }
 
+    console.log("Preparing evaluation prompt with user answers...");
     const evalPrompt = `
       Evaluate the candidate's answers based on the respective interview questions.
       For each question, evaluate the provided answer. Calculate sub-scores (out of 100) for overallScore, technicalScore, communicationScore, confidenceScore, problemSolvingScore, and provide strengths, weaknesses, an overall descriptive feedback, individual question evaluations (including a score from 1 to 10 for each), and helpful actionable tips.
@@ -49,6 +50,7 @@ export default async function handler(req: Request, res: Response) {
       ${JSON.stringify({ questions, answers })}
     `;
 
+    console.log("Constructing evaluation schema structure...");
     const evaluationSchema = {
       type: Type.OBJECT,
       properties: {
@@ -121,22 +123,32 @@ export default async function handler(req: Request, res: Response) {
     };
 
     console.log("Sending evaluation request with strict responseSchema to Gemini API...");
-    const aiResult = await generateWithRetry(ai, {
-      model: "gemini-3.5-flash",
-      contents: evalPrompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: evaluationSchema
-      }
-    });
+    let aiResult;
+    try {
+      aiResult = await generateWithRetry(ai, {
+        model: "gemini-3.5-flash",
+        contents: evalPrompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: evaluationSchema
+        }
+      });
+    } catch (err: any) {
+      console.error("GEMINI ERROR");
+      console.error(err);
+      console.error(err?.stack);
+      throw err;
+    }
 
     if (!aiResult.success) {
+      console.error("AI Generation failed:", aiResult.error);
       return res.status(429).json({ success: false, error: (aiResult as any).error });
     }
 
     const rawText = aiResult.response.text || "";
     console.log("Raw Gemini evaluation response length:", rawText.length);
 
+    console.log("Extracting JSON string from Gemini response...");
     // Robust JSON extraction to handle any markdown wrappers or surrounding text
     const firstBrace = rawText.indexOf("{");
     const lastBrace = rawText.lastIndexOf("}");
@@ -149,6 +161,7 @@ export default async function handler(req: Request, res: Response) {
     }
 
     try {
+      console.log("Parsing extracted JSON string...");
       const evaluation = JSON.parse(jsonStr);
       console.log("Successfully parsed interview evaluation JSON with strict schema.");
       return res.status(200).json({ evaluation });
@@ -160,6 +173,11 @@ export default async function handler(req: Request, res: Response) {
       throw new Error(`AI evaluation response could not be parsed as valid JSON: ${parseError.message}`);
     }
   } catch (error: any) {
+    console.error("========== EVALUATE INTERVIEW ERROR ==========");
+    console.error(error);
+    console.error(error?.stack);
+    console.error(error?.message);
+    console.error("==============================================");
     console.error("COMPLETE SERVER STACK TRACE FOR /api/evaluate-interview FAILURE:");
     console.error(error.stack || error);
     return res.status(500).json({ 
